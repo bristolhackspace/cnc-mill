@@ -1,0 +1,8 @@
+# Include your custom_postgui HAL commands here
+# This file will not be overwritten when you run PNCconf again
+setp hy_vfd.enable 1
+
+net tool-change-request    =>  gmoccapy.toolchange-change
+net tool-change-confirmed  <=  gmoccapy.toolchange-changed
+net tool-number            =>  gmoccapy.toolchange-number
+net tooloffset-z gmoccapy.tooloffset-z <= motion.tooloffset.z

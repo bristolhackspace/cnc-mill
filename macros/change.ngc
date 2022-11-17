@@ -1,0 +1,86 @@
+
+o<change> sub
+;(debug, in change tool_in_spindle=#<tool_in_spindle> current_pocket=#<current_pocket>)
+;(debug, selected_tool=#<selected_tool> selected_pocket=#<selected_pocket>)
+
+;otherwise after the M6 this information is gone!
+#<tool> = #<selected_tool>
+#<pocket> = #<selected_pocket>
+
+
+
+; we must execute this only in the milltask interpreter
+; or preview will break, so test for '#<_task>' which is 1 for 
+; the milltask interpreter and 0 in the UI's
+O100 if [#<_task> EQ 0]
+        (debug, Task ist Null)
+O100     return [999]
+O100 endif
+
+
+G30.1 ; Capture current position into #5181-#5183...
+
+; First go up
+G53 G0 Z[#<_ini[CHANGE_POSITION]Z>]
+M5 ; Turn off spindle
+; Then move to change position
+G53 G0 X[#<_ini[CHANGE_POSITION]X>] Y[#<_ini[CHANGE_POSITION]Y>]
+
+
+M6 ; Instruct operator to change tool
+M70 ; Save current modal state
+
+M9 ; Turn off coolant
+G49 ; Cancel tool offset
+G21 ; Use millimeters
+G94 ; Feedrate in units/min
+G40 ; Turn cutter radius compensation off
+
+; Move above toolsensor
+G53 G0 X[#<_ini[TOOLSENSOR]X>] Y[#<_ini[TOOLSENSOR]Y>]
+G53 G0 Z[#<_ini[TOOLSENSOR]Z>]
+
+; Fast search for probe
+F #<_ini[TOOLSENSOR]SEARCHVEL>
+G91
+G38.2 Z #<_ini[TOOLSENSOR]MAXPROBE>
+G0 Z2
+
+; Slow search
+F #<_ini[TOOLSENSOR]PROBEVEL>
+G38.2 Z-4
+
+O500 if [#5070 EQ 0]
+M72 ; Restore modal state
+O500 return [-3] ; indicate probe contact failure to epilog
+O500 endif
+
+; Switch back to absolute positioning
+G90
+G53 G0 Z[#<_ini[CHANGE_POSITION]Z>]
+
+; Convert work coordinates to machine coordinates
+#<_absolute_touch> = [#5063 + #[5203 + [#5220 * 20]]]
+; Subtract spindle face reference
+; TODO: Add macro to touchoff spindle face if moved.
+#<_new_offset> = [#<_absolute_touch> - #<_ini[TOOLSENSOR]SPINDLE_REFERENCE>]
+
+; Show the operator the new tool offset. This is temporary
+; as we'll need to apply it again after M72
+G10 L1 P#<tool> Z[#<_new_offset>]
+G43
+
+;Move back up to change position
+G53 G0 Z[#<_ini[CHANGE_POSITION]Z>]
+; then move to saved position
+G53 G0 X[#5181] Y[#5182]
+
+; Restore modal state
+M72
+; Re-apply tool offset
+G43
+
+; signal success be returning a value > 0:
+o<change> endsub [1]
+M2
+
